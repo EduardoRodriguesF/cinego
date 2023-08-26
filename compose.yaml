@@ -3,22 +3,17 @@ services:
     build:
       context: .
       target: final
+    env_file: .env
     ports:
       - 80:80
     depends_on:
       db:
         condition: service_healthy
-    x-develop:
-      watch:
-        - action: sync
-          path: .
-          target: /src
   db:
     image: postgres
     restart: always
     user: postgres
-    env_file:
-      - .env
+    env_file: .env
     volumes:
       - db-data:/var/lib/postgresql/data
     expose:
