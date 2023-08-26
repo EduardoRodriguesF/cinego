@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,14 +15,14 @@ import (
 )
 
 type Session struct {
-	room string
-	datetime time.Time
-	movie Movie
+	Room string `json:"room"`
+	Datetime time.Time `json:"datetime"`
+	Movie Movie `json:"movie"`
 }
 
 type Movie struct {
-	title string
-	synopsis string
+	Title string `json:"title"`
+	Synopsis string `json:"synopsis"`
 }
 
 var db *sql.DB
@@ -45,14 +46,54 @@ func init() {
 }
 
 func listMovies(w http.ResponseWriter, r *http.Request) {
-	_, err := db.Query("SELECT * FROM movies")
+	rows, err := db.Query("SELECT * FROM movies")
+	var movies []Movie
 
 	if (err != nil) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 
-	fmt.Fprintf(w, "Hello!")
+	defer rows.Close()
+
+	for rows.Next() {
+		var movie Movie
+
+		if err := rows.Scan(&movie.Title, &movie.Synopsis); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		movies = append(movies, movie)
+	}
+
+	res, err := json.Marshal(movies)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.Write(res)
+
+}
+
+func createMovieHandler(w http.ResponseWriter, r *http.Request) {
+	var movie Movie
+	if err := json.NewDecoder(r.Body).Decode(&movie); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Inserting title: %s", movie.Title)
+
+	_, err := db.Exec("INSERT INTO movies (title, synopsis) VALUES ($1, $2)", movie.Title, movie.Synopsis)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
 }
 
 func main() {
@@ -62,6 +103,7 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/movies", listMovies).Methods(http.MethodGet)
+	r.HandleFunc("/movies", createMovieHandler).Methods(http.MethodPost)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)
