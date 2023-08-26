@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -21,11 +23,24 @@ type Session struct {
 }
 
 type Movie struct {
+	Slug string `json:"slug"`
 	Title string `json:"title"`
 	Synopsis string `json:"synopsis"`
 }
 
 var db *sql.DB
+
+func slugify(s string) string {
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, " ", "-")
+
+	reg := regexp.MustCompile("[^a-zA-Z0-9]+")
+	slug := reg.ReplaceAllString(s, "-")
+
+	slug = strings.Trim(s, "-")
+
+	return slug
+}
 
 func init() {
 	host := "db"
@@ -46,7 +61,7 @@ func init() {
 }
 
 func listMovies(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT * FROM movies")
+	rows, err := db.Query("SELECT slug, title, synopsis FROM movies")
 	var movies []Movie
 
 	if (err != nil) {
@@ -59,7 +74,7 @@ func listMovies(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var movie Movie
 
-		if err := rows.Scan(&movie.Title, &movie.Synopsis); err != nil {
+		if err := rows.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -85,9 +100,23 @@ func createMovieHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Inserting title: %s", movie.Title)
+	movie.Slug = slugify(movie.Title)
 
-	_, err := db.Exec("INSERT INTO movies (title, synopsis) VALUES ($1, $2)", movie.Title, movie.Synopsis)
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM movies WHERE slug = $1", movie.Slug).Scan(&count); err != nil {
+		if err != sql.ErrNoRows {
+			// Real error happened
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if count > 0 {
+		http.Error(w, "Duplicate entry", http.StatusBadRequest)
+		return
+	}
+
+	_, err := db.Exec("INSERT INTO movies (slug, title, synopsis) VALUES ($1, $2, $3)", movie.Slug, movie.Title, movie.Synopsis)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
