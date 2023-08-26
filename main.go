@@ -125,6 +125,32 @@ func createMovieHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+func readMovieHandler(w http.ResponseWriter, r *http.Request) {
+	var movie Movie
+
+	params := mux.Vars(r)
+	slug := params["slug"]
+
+	row := db.QueryRow("SELECT slug, title, synopsis FROM movies WHERE slug = $1", slug)
+	if err := row.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			http.Error(w, "Not found", http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+
+	res, err := json.Marshal(movie)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.Write(res)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -133,6 +159,7 @@ func main() {
 
 	r.HandleFunc("/movies", listMovies).Methods(http.MethodGet)
 	r.HandleFunc("/movies", createMovieHandler).Methods(http.MethodPost)
+	r.HandleFunc("/movies/{slug}", readMovieHandler).Methods(http.MethodGet)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)
