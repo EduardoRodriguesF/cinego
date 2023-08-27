@@ -210,6 +210,30 @@ func partialUpdateMovieHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func deleteMovieHandler(w http.ResponseWriter, r *http.Request) {
+	var movie Movie
+
+	params := mux.Vars(r)
+	slug := params["slug"]
+
+	row := db.QueryRow("SELECT slug, title, synopsis FROM movies WHERE slug = $1", slug)
+	if err := row.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			http.Error(w, "Not found", http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+
+	if _, err := db.Query("DELETE FROM movies WHERE slug = $1", slug); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -220,6 +244,7 @@ func main() {
 	r.HandleFunc("/movies", createMovieHandler).Methods(http.MethodPost)
 	r.HandleFunc("/movies/{slug}", readMovieHandler).Methods(http.MethodGet)
 	r.HandleFunc("/movies/{slug}", partialUpdateMovieHandler).Methods(http.MethodPatch)
+	r.HandleFunc("/movies/{slug}", deleteMovieHandler).Methods(http.MethodDelete)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)

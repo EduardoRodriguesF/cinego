@@ -1,0 +1,6 @@
+url = "{{baseUrl}}/movies/lorem-ipsum"
+method = "DELETE"
+
+[query]
+
+[headers]
