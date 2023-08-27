@@ -151,6 +151,65 @@ func readMovieHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+func partialUpdateMovieHandler(w http.ResponseWriter, r *http.Request) {
+	var movie Movie
+	var fields map[string]string
+
+	params := mux.Vars(r)
+	slug := params["slug"]
+
+	row := db.QueryRow("SELECT slug, title, synopsis FROM movies WHERE slug = $1", slug)
+	if err := row.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			http.Error(w, "Not found", http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&fields); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if value, ok := fields["title"]; ok {
+		updatedSlug := slugify(value)
+
+		var count int
+		if err := db.QueryRow("SELECT COUNT(*) FROM movies WHERE slug = $1", updatedSlug).Scan(&count); err != nil {
+			if err != sql.ErrNoRows {
+				// Real error happened
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if count > 0 {
+			http.Error(w, "Duplicate entry", http.StatusBadRequest)
+			return
+		}
+
+		fields["slug"] = updatedSlug
+	}
+
+	var queryList []string
+	for k, v := range fields {
+		queryList = append(queryList, fmt.Sprintf("%s = '%s'", k, v))
+	}
+	query := strings.Join(queryList, ", ")
+
+	statement := fmt.Sprintf("UPDATE movies SET %s WHERE slug = '%s'", query, slug)
+	log.Printf("Statement: %s", statement)
+
+	if _, err := db.Query(statement); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -160,6 +219,7 @@ func main() {
 	r.HandleFunc("/movies", listMovies).Methods(http.MethodGet)
 	r.HandleFunc("/movies", createMovieHandler).Methods(http.MethodPost)
 	r.HandleFunc("/movies/{slug}", readMovieHandler).Methods(http.MethodGet)
+	r.HandleFunc("/movies/{slug}", partialUpdateMovieHandler).Methods(http.MethodPatch)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)
