@@ -17,14 +17,14 @@ import (
 )
 
 type Session struct {
-	Room string `json:"room"`
+	Room     string    `json:"room"`
 	Datetime time.Time `json:"datetime"`
-	Movie Movie `json:"movie"`
+	Movie    Movie     `json:"movie"`
 }
 
 type Movie struct {
-	Slug string `json:"slug"`
-	Title string `json:"title"`
+	Slug     string `json:"slug"`
+	Title    string `json:"title"`
 	Synopsis string `json:"synopsis"`
 }
 
@@ -40,6 +40,17 @@ func slugify(s string) string {
 	slug = strings.Trim(s, "-")
 
 	return slug
+}
+
+func queryMovieFromSlug(slug string) (Movie, error) {
+	var movie Movie
+
+	row := db.QueryRow("SELECT slug, title, synopsis FROM movies WHERE slug = $1", slug)
+	if err := row.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
+		return movie, err
+	}
+
+	return movie, nil
 }
 
 func init() {
@@ -64,7 +75,7 @@ func listMovies(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("SELECT slug, title, synopsis FROM movies")
 	var movies []Movie
 
-	if (err != nil) {
+	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
@@ -131,8 +142,9 @@ func readMovieHandler(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	slug := params["slug"]
 
-	row := db.QueryRow("SELECT slug, title, synopsis FROM movies WHERE slug = $1", slug)
-	if err := row.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
+
+	movie, err := queryMovieFromSlug(slug)
+	if err != nil {
 		switch err {
 		case sql.ErrNoRows:
 			http.Error(w, "Not found", http.StatusNotFound)
@@ -152,14 +164,12 @@ func readMovieHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func partialUpdateMovieHandler(w http.ResponseWriter, r *http.Request) {
-	var movie Movie
 	var fields map[string]string
 
 	params := mux.Vars(r)
 	slug := params["slug"]
 
-	row := db.QueryRow("SELECT slug, title, synopsis FROM movies WHERE slug = $1", slug)
-	if err := row.Scan(&movie.Slug, &movie.Title, &movie.Synopsis); err != nil {
+	if _, err := queryMovieFromSlug(slug); err != nil {
 		switch err {
 		case sql.ErrNoRows:
 			http.Error(w, "Not found", http.StatusNotFound)

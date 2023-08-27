@@ -1,4 +1,4 @@
-url = "{{baseUrl}}/movies/lorem-ipsum"
+url = "{{baseUrl}}/movies/dolor-met"
 method = "GET"
 
 [query]
