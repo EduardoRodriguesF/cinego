@@ -17,9 +17,9 @@ import (
 )
 
 type Session struct {
-	Room     string    `json:"room"`
-	Datetime time.Time `json:"datetime"`
-	Movie    Movie     `json:"movie"`
+	Id string `json:"id"`
+	StartsAt time.Time `json:"starts_at"`
+	MovieSlug    string     `json:"movie"`
 }
 
 type Movie struct {
@@ -142,7 +142,6 @@ func readMovieHandler(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	slug := params["slug"]
 
-
 	movie, err := queryMovieFromSlug(slug)
 	if err != nil {
 		switch err {
@@ -244,6 +243,41 @@ func deleteMovieHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func sessionsSearchHandler(w http.ResponseWriter, r *http.Request) {
+	movieQuery := r.URL.Query().Get("movie")
+	log.Printf("Search: %s", movieQuery)
+
+	rows, err := db.Query("SELECT id, movie, starts_at FROM sessions WHERE movie LIKE $1", movieQuery)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	defer rows.Close()
+
+	sessions := make([]Session, 0)
+	for rows.Next() {
+		var session Session
+
+		if err := rows.Scan(&session.Id, &session.MovieSlug, &session.StartsAt); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	res, err := json.Marshal(sessions)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.Write(res)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -255,6 +289,8 @@ func main() {
 	r.HandleFunc("/movies/{slug}", readMovieHandler).Methods(http.MethodGet)
 	r.HandleFunc("/movies/{slug}", partialUpdateMovieHandler).Methods(http.MethodPatch)
 	r.HandleFunc("/movies/{slug}", deleteMovieHandler).Methods(http.MethodDelete)
+
+	r.HandleFunc("/sessions/search", sessionsSearchHandler).Methods(http.MethodGet)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)

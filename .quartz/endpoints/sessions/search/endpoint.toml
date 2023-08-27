@@ -1,0 +1,7 @@
+url = "{{baseUrl}}/sessions/search"
+method = "GET"
+
+[query]
+movie = "twelve"
+
+[headers]
