@@ -13,8 +13,10 @@ import (
 
 	"github.com/gorilla/mux"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
+
+const DUPLICATE_KEY_ERR = "23505"
 
 type Session struct {
 	Id string `json:"id"`
@@ -197,6 +199,13 @@ func partialUpdateMovieHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Statement: %s", statement)
 
 	if _, err := db.Query(statement); err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			if string(pqErr.Code) == DUPLICATE_KEY_ERR {
+				http.Error(w, "Duplicate entry", http.StatusBadRequest)
+				return
+			}
+		}
+
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
