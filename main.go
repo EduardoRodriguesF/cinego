@@ -278,6 +278,40 @@ func sessionsSearchHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+func sessionByIdHandler(w http.ResponseWriter, r *http.Request) {
+	var session Session
+	params := mux.Vars(r)
+
+	id, ok := params["id"]
+
+	if !ok {
+		http.Error(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+
+	row := db.QueryRow("SELECT id, movie, starts_at FROM sessions WHERE id = $1", id)
+
+	if err := row.Scan(&session.Id, &session.MovieSlug, &session.StartsAt); err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			http.Error(w, "Missing id", http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		return
+	}
+
+	res, err := json.Marshal(session)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.Write(res)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -291,6 +325,7 @@ func main() {
 	r.HandleFunc("/movies/{slug}", deleteMovieHandler).Methods(http.MethodDelete)
 
 	r.HandleFunc("/sessions/search", sessionsSearchHandler).Methods(http.MethodGet)
+	r.HandleFunc("/sessions/{id}", sessionByIdHandler).Methods(http.MethodGet)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)
