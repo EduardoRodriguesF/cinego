@@ -184,21 +184,6 @@ func partialUpdateMovieHandler(w http.ResponseWriter, r *http.Request) {
 
 	if value, ok := fields["title"]; ok {
 		updatedSlug := slugify(value)
-
-		var count int
-		if err := db.QueryRow("SELECT COUNT(*) FROM movies WHERE slug = $1", updatedSlug).Scan(&count); err != nil {
-			if err != sql.ErrNoRows {
-				// Real error happened
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-
-		if count > 0 {
-			http.Error(w, "Duplicate entry", http.StatusBadRequest)
-			return
-		}
-
 		fields["slug"] = updatedSlug
 	}
 
