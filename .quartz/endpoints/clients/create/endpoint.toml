@@ -1,0 +1,6 @@
+url = "{{baseUrl}}/clients"
+method = "POST"
+
+[query]
+
+[headers]

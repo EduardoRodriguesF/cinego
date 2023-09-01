@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"regexp"
 	"strings"
@@ -19,15 +20,22 @@ import (
 const DUPLICATE_KEY_ERR = "23505"
 
 type Session struct {
-	Id string `json:"id"`
-	StartsAt time.Time `json:"starts_at"`
-	MovieSlug    string     `json:"movie"`
+	Id        string    `json:"id"`
+	StartsAt  time.Time `json:"starts_at"`
+	MovieSlug string    `json:"movie"`
 }
 
 type Movie struct {
 	Slug     string `json:"slug"`
 	Title    string `json:"title"`
 	Synopsis string `json:"synopsis"`
+}
+
+type Client struct {
+	FirstName string    `json:"first_name"`
+	LastName  string    `json:"last_name"`
+	Email     string    `json:"email"`
+	Birthday  string `json:"birthday"`
 }
 
 var db *sql.DB
@@ -306,6 +314,37 @@ func sessionByIdHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+func createClientHandler(w http.ResponseWriter, r *http.Request) {
+	var client Client
+
+	if err := json.NewDecoder(r.Body).Decode(&client); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	addr, err := mail.ParseAddress(client.Email)
+	if err != nil {
+		http.Error(w, "Invalid email address", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Address: %s", addr)
+
+	if _, err := db.Exec("INSERT INTO clients (email, first_name, last_name, birthday) VALUES ($1, $2, $3, $4)", client.Email, client.FirstName, client.LastName, client.Birthday); err != nil {
+		if pqErr, ok := err.(*pq.Error); ok {
+			if string(pqErr.Code) == DUPLICATE_KEY_ERR {
+				http.Error(w, "Email already registered", http.StatusBadRequest)
+				return
+			}
+		}
+
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -320,6 +359,8 @@ func main() {
 
 	r.HandleFunc("/sessions/search", sessionsSearchHandler).Methods(http.MethodGet)
 	r.HandleFunc("/sessions/{id}", sessionByIdHandler).Methods(http.MethodGet)
+
+	r.HandleFunc("/clients", createClientHandler).Methods(http.MethodPost)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)
