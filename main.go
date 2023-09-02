@@ -39,6 +39,12 @@ type Client struct {
 	Birthday  string `json:"birthday"`
 }
 
+type Ticket struct {
+	Id        string `json:"id"`
+	ClientId  string `json:"client_id"`
+	SessionId string `json:"session_id"`
+}
+
 var db *sql.DB
 
 func slugify(s string) string {
@@ -375,6 +381,66 @@ func clientByIdHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(res)
 }
 
+func sessionTicketsHandler(w http.ResponseWriter, r *http.Request) {
+	sessionId := mux.Vars(r)["id"]
+
+	rows, err := db.Query("SELECT id, client_id FROM tickets WHERE session_id = $1", sessionId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	var tickets []Ticket
+	defer rows.Close()
+
+	for rows.Next() {
+		var ticket Ticket
+
+		if err := rows.Scan(&ticket.Id, &ticket.ClientId); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+
+		ticket.SessionId = sessionId
+		tickets = append(tickets, ticket)
+	}
+
+	res, err := json.Marshal(tickets)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.Write(res)
+}
+
+func createSessionTicketHandler(w http.ResponseWriter, r *http.Request) {
+	sessionId := mux.Vars(r)["id"]
+
+	var fields map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&fields); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	email, ok := fields["email"]
+	if !ok {
+		http.Error(w, "Missing user email", http.StatusBadRequest)
+	}
+
+	var clientId string
+
+	// Creates client, if it doesn't exist
+	row := db.QueryRow("INSERT INTO clients (email) VALUES ($1) ON CONFLICT (email) DO UPDATE SET email = excluded.email RETURNING id", email)
+	if err := row.Scan(&clientId); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	_, err := db.Exec("INSERT INTO tickets (client_id, session_id) VALUES ($1, $2)", clientId, sessionId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -389,6 +455,8 @@ func main() {
 
 	r.HandleFunc("/sessions/search", sessionsSearchHandler).Methods(http.MethodGet)
 	r.HandleFunc("/sessions/{id}", sessionByIdHandler).Methods(http.MethodGet)
+	r.HandleFunc("/sessions/{id}/tickets", sessionTicketsHandler).Methods(http.MethodGet)
+	r.HandleFunc("/sessions/{id}/tickets", createSessionTicketHandler).Methods(http.MethodPost)
 
 	r.HandleFunc("/clients", createClientHandler).Methods(http.MethodPost)
 	r.HandleFunc("/clients/{id}", clientByIdHandler).Methods(http.MethodGet)

@@ -1,0 +1,6 @@
+url = "{{baseUrl}}/sessions/637abf5d-673a-402c-81b9-6b867685e228/tickets"
+method = "POST"
+
+[query]
+
+[headers]
