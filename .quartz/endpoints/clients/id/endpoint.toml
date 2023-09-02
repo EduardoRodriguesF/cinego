@@ -1,0 +1,6 @@
+url = "{{baseUrl}}/clients/bc376b56-f9b7-4f64-b46c-45affca16c8c"
+method = "GET"
+
+[query]
+
+[headers]

@@ -32,9 +32,10 @@ type Movie struct {
 }
 
 type Client struct {
-	FirstName string    `json:"first_name"`
-	LastName  string    `json:"last_name"`
-	Email     string    `json:"email"`
+	Id        string `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Email     string `json:"email"`
 	Birthday  string `json:"birthday"`
 }
 
@@ -345,6 +346,35 @@ func createClientHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func clientByIdHandler(w http.ResponseWriter, r *http.Request) {
+	var client Client
+	params := mux.Vars(r)
+
+	id, ok := params["id"]
+	if !ok {
+		http.Error(w, "Missing id", http.StatusBadRequest)
+	}
+
+	row := db.QueryRow("SELECT id, email, first_name, last_name, birthday FROM clients WHERE id = $1", id)
+
+	if err := row.Scan(&client.Id, &client.Email, &client.FirstName, &client.LastName, &client.Birthday); err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	res, err := json.Marshal(client)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.Header().Add("Content-type", "application/json")
+	w.Write(res)
+}
+
 func main() {
 	log.Println("Starting cinego server")
 	defer db.Close()
@@ -361,6 +391,7 @@ func main() {
 	r.HandleFunc("/sessions/{id}", sessionByIdHandler).Methods(http.MethodGet)
 
 	r.HandleFunc("/clients", createClientHandler).Methods(http.MethodPost)
+	r.HandleFunc("/clients/{id}", clientByIdHandler).Methods(http.MethodGet)
 
 	log.Println("Listening on port 80")
 	http.ListenAndServe(":80", r)
